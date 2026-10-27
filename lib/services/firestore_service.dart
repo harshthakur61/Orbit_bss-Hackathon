@@ -215,6 +215,7 @@ class FirestoreService {
           general: BedCount(available: 15, total: 25),
         ).toJson(),
         'lastUpdated': Timestamp.fromDate(now.subtract(const Duration(minutes: 22))),
+        'isNurseOnline': false,
       },
       {
         'id': 'kokilaben_andheri',
@@ -521,6 +522,67 @@ class FirestoreService {
         'status': 'failed',
         'attempts': updatedAttempts.map((a) => a.toJson()).toList(),
       });
+    }
+  }
+
+  // Handle instant auto-skip (0s delay auto-cascade for offline nurse or 0 available beds)
+  Future<void> handleAutoSkip(String requestId, String hospitalId, [String? reason]) async {
+    final reqRef = _requestsRef.doc(requestId);
+    final reqSnapshot = await reqRef.get();
+    if (!reqSnapshot.exists) return;
+
+    final req = EmergencyRequest.fromJson(reqSnapshot.data()!, reqSnapshot.id);
+    if (req.status != 'offered' || req.currentHospitalId != hospitalId) return;
+
+    final hospRef = _hospitalsRef.doc(hospitalId);
+    final hospDoc = await hospRef.get();
+    final hospName = hospDoc.exists ? (hospDoc.data()?['name'] ?? 'Hospital') : 'Hospital';
+
+    final skipReason = reason ?? 'Auto-skipped (0s delay)';
+
+    final updatedAttempts = List<Attempt>.from(req.attempts)
+      ..add(Attempt(
+        hospitalId: hospitalId,
+        hospitalName: hospName,
+        result: 'auto_skip',
+        reason: skipReason,
+        at: DateTime.now(),
+      ));
+
+    final nextIndex = req.currentIndex + 1;
+    if (nextIndex < req.rankedHospitalIds.length) {
+      final nextHospitalId = req.rankedHospitalIds[nextIndex];
+      final nextExpiresAt =
+          DateTime.now().add(const Duration(seconds: 120));
+
+      await reqRef.update({
+        'status': 'offered',
+        'currentIndex': nextIndex,
+        'currentHospitalId': nextHospitalId,
+        'offerExpiresAt': Timestamp.fromDate(nextExpiresAt),
+        'attempts': updatedAttempts.map((a) => a.toJson()).toList(),
+      });
+    } else {
+      await reqRef.update({
+        'status': 'failed',
+        'attempts': updatedAttempts.map((a) => a.toJson()).toList(),
+      });
+    }
+  }
+
+  Future<void> handleOfflineSkip(String requestId, String hospitalId) async {
+    await handleAutoSkip(requestId, hospitalId, 'Nurse terminal offline (0s auto-skip)');
+  }
+
+  // Nurse: Update presence (online / offline)
+  Future<void> updateNursePresence(String hospitalId, bool isOnline) async {
+    try {
+      await _hospitalsRef.doc(hospitalId).update({
+        'isNurseOnline': isOnline,
+        'lastNurseActive': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error updating nurse presence: $e');
     }
   }
 

@@ -326,6 +326,79 @@ class _DemoControlsScreenState extends ConsumerState<DemoControlsScreen> {
                 ),
               ),
             ),
+
+            const Divider(height: 40),
+
+            // Section 4: Toggle Hospital Nurse Terminal Presence
+            Text(
+              'Toggle Hospital Nurse Terminal (Online / Offline)',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Hospitals set to Offline will be automatically skipped in 0 seconds during emergency hold requests.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: hospitalsAsync.when(
+                  data: (hospitals) {
+                    return Column(
+                      children: hospitals.map((h) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  h.name,
+                                  style: const TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  Text(
+                                    h.isNurseOnline ? 'ONLINE' : 'OFFLINE',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: h.isNurseOnline
+                                          ? AppColors.success
+                                          : AppColors.danger,
+                                    ),
+                                  ),
+                                  Switch.adaptive(
+                                    value: h.isNurseOnline,
+                                    activeColor: AppColors.success,
+                                    onChanged: (val) async {
+                                      await firestoreService.updateNursePresence(
+                                          h.id, val);
+                                      _showMessage(
+                                          '${h.name} nurse terminal is now ${val ? "ONLINE 🟢" : "OFFLINE 🔴 (0s Auto-Skip)"}');
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                  loading: () => const CircularProgressIndicator(),
+                  error: (err, _) => Text('Error: $err'),
+                ),
+              ),
+            ),
           ],
         ),
       ),

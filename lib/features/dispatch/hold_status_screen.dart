@@ -246,9 +246,36 @@ class _HoldStatusScreenState extends ConsumerState<HoldStatusScreen> {
             );
           }
 
+          // Check if targeted hospital should be auto-skipped (Nurse Offline OR 0 Available Beds)
+          final bool isNurseOffline = targetHospital != null && !targetHospital.isNurseOnline;
+          final bool hasZeroRequestedBeds = targetHospital != null &&
+              req.needs.any((need) => targetHospital!.beds.getForType(need).available <= 0);
+
+          if (req.status == 'offered' &&
+              targetHospital != null &&
+              (isNurseOffline || hasZeroRequestedBeds) &&
+              !_isProcessing) {
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              if (mounted && !_isProcessing) {
+                setState(() => _isProcessing = true);
+                final skipReason = isNurseOffline
+                    ? 'Nurse terminal offline (0s auto-skip)'
+                    : '0 ${req.needs.join(", ")} beds available (0s auto-skip)';
+
+                _showToast(
+                    '⚡ $skipReason at ${targetHospital!.name}. Auto-skipping (0s delay)...');
+                await firestoreService.handleAutoSkip(
+                    req.id, targetHospital.id, skipReason);
+                if (mounted) setState(() => _isProcessing = false);
+              }
+            });
+          }
+
           // Check if request was accepted by current or previous attempt
           final bool isAccepted = req.status == 'accepted' ||
-              req.attempts.any((a) => a.hospitalId == req.currentHospitalId && a.result == 'accepted');
+              req.attempts.any((a) =>
+                  a.hospitalId == req.currentHospitalId &&
+                  a.result == 'accepted');
 
           if (req.status == 'failed') {
             return _buildFailedState(req, firestoreService);
@@ -277,14 +304,73 @@ class _HoldStatusScreenState extends ConsumerState<HoldStatusScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'OFFER SENT TO:',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 1.0,
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'OFFER SENT TO:',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textSecondary,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isNurseOffline
+                                    ? AppColors.dangerTint
+                                    : (hasZeroRequestedBeds
+                                        ? AppColors.warningTint
+                                        : AppColors.successTint),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: isNurseOffline
+                                      ? AppColors.danger
+                                      : (hasZeroRequestedBeds
+                                          ? AppColors.warning
+                                          : AppColors.success),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isNurseOffline
+                                        ? Icons.wifi_off_rounded
+                                        : (hasZeroRequestedBeds
+                                            ? Icons.event_busy_rounded
+                                            : Icons.wifi_rounded),
+                                    size: 12,
+                                    color: isNurseOffline
+                                        ? AppColors.danger
+                                        : (hasZeroRequestedBeds
+                                            ? AppColors.warningText
+                                            : AppColors.success),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    isNurseOffline
+                                        ? 'Nurse Offline (Auto-Skip)'
+                                        : (hasZeroRequestedBeds
+                                            ? '0 Beds Avail (Auto-Skip)'
+                                            : 'Nurse Online'),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: isNurseOffline
+                                          ? AppColors.danger
+                                          : (hasZeroRequestedBeds
+                                              ? AppColors.warningText
+                                              : AppColors.success),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -344,6 +430,9 @@ class _HoldStatusScreenState extends ConsumerState<HoldStatusScreen> {
                               iconColor = AppColors.success;
                             } else if (attempt.result == 'rejected') {
                               iconData = Icons.cancel;
+                              iconColor = AppColors.danger;
+                            } else if (attempt.result == 'offline_skip') {
+                              iconData = Icons.flash_off_rounded;
                               iconColor = AppColors.danger;
                             } else {
                               iconData = Icons.timer_off;

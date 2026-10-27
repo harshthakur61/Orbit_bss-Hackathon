@@ -34,7 +34,8 @@ class _HospitalLoginScreenState extends ConsumerState<HospitalLoginScreen> {
       try {
         final hospital = hospitals.firstWhere((h) => h.id == _selectedHospitalId);
         if (hospital.pin == pin || pin == '1234') {
-          // Success
+          // Success: Mark nurse online & select hospital
+          ref.read(firestoreServiceProvider).updateNursePresence(_selectedHospitalId!, true);
           ref.read(selectedHospitalIdProvider.notifier).select(_selectedHospitalId);
           context.go('/nurse/beds');
         } else {

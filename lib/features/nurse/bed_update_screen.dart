@@ -269,6 +269,7 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
             icon: const Icon(Icons.home_rounded),
             tooltip: 'Main Landing Page (Change Role)',
             onPressed: () {
+              firestoreService.updateNursePresence(selectedId, false);
               ref.read(selectedHospitalIdProvider.notifier).select(null);
               context.go('/');
             },
@@ -277,6 +278,7 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Switch Hospital Login',
             onPressed: () {
+              firestoreService.updateNursePresence(selectedId, false);
               ref.read(selectedHospitalIdProvider.notifier).select(null);
               context.go('/nurse/login');
             },
@@ -285,56 +287,99 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
       ),
       body: Column(
         children: [
-          // Freshness Header Banner
+          // Freshness & Online Status Header Banner
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             color: AppColors.surface,
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: FreshnessBadge(lastUpdated: hospital.lastUpdated),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          hospital.isNurseOnline
+                              ? Icons.wifi_rounded
+                              : Icons.wifi_off_rounded,
+                          color: hospital.isNurseOnline
+                              ? AppColors.success
+                              : AppColors.danger,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          hospital.isNurseOnline
+                              ? 'Nurse Terminal ONLINE'
+                              : 'Nurse Terminal OFFLINE',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: hospital.isNurseOnline
+                                ? AppColors.success
+                                : AppColors.danger,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Switch.adaptive(
+                      value: hospital.isNurseOnline,
+                      activeColor: AppColors.success,
+                      onChanged: (val) {
+                        firestoreService.updateNursePresence(hospital.id, val);
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                // 1-Tap "Everything is up to date" Button
-                ElevatedButton.icon(
-                  onPressed: _isSaving
-                      ? null
-                      : () async {
-                          try {
-                            await firestoreService.touchHospitalTimestamp(hospital.id);
-                            setState(() {
-                              _editedBeds = null; // Reset edited draft
-                            });
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✓ Refreshed timestamp! Data marked fresh.'),
-                                  backgroundColor: AppColors.success,
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error: $e'),
-                                  backgroundColor: AppColors.danger,
-                                ),
-                              );
-                            }
-                          }
-                        },
-                  icon: const Icon(Icons.check_circle_rounded, size: 18),
-                  label: const Text(
-                    'Up to Date',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(120, 44),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
+                const Divider(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FreshnessBadge(lastUpdated: hospital.lastUpdated),
+                    ),
+                    const SizedBox(width: 8),
+                    // 1-Tap "Everything is up to date" Button
+                    ElevatedButton.icon(
+                      onPressed: _isSaving
+                          ? null
+                          : () async {
+                              try {
+                                await firestoreService.touchHospitalTimestamp(hospital.id);
+                                setState(() {
+                                  _editedBeds = null; // Reset edited draft
+                                });
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('✓ Refreshed timestamp! Data marked fresh.'),
+                                      backgroundColor: AppColors.success,
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Error: $e'),
+                                      backgroundColor: AppColors.danger,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      icon: const Icon(Icons.check_circle_rounded, size: 18),
+                      label: const Text(
+                        'Up to Date',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.success,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(120, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -11,6 +11,8 @@ class Hospital {
   final String loadLevel; // 'low', 'med', 'high'
   final BedInventory beds;
   final DateTime? lastUpdated;
+  final bool isNurseOnline;
+  final DateTime? lastNurseActive;
 
   const Hospital({
     required this.id,
@@ -22,6 +24,8 @@ class Hospital {
     required this.loadLevel,
     required this.beds,
     this.lastUpdated,
+    this.isNurseOnline = true,
+    this.lastNurseActive,
   });
 
   factory Hospital.fromJson(Map<String, dynamic> json, String id) {
@@ -31,6 +35,15 @@ class Hospital {
         updatedDate = (json['lastUpdated'] as Timestamp).toDate();
       } else if (json['lastUpdated'] is String) {
         updatedDate = DateTime.tryParse(json['lastUpdated']);
+      }
+    }
+
+    DateTime? nurseActiveDate;
+    if (json['lastNurseActive'] != null) {
+      if (json['lastNurseActive'] is Timestamp) {
+        nurseActiveDate = (json['lastNurseActive'] as Timestamp).toDate();
+      } else if (json['lastNurseActive'] is String) {
+        nurseActiveDate = DateTime.tryParse(json['lastNurseActive']);
       }
     }
 
@@ -46,6 +59,8 @@ class Hospital {
           ? BedInventory.fromJson(Map<String, dynamic>.from(json['beds']))
           : BedInventory.initial(),
       lastUpdated: updatedDate,
+      isNurseOnline: json['isNurseOnline'] as bool? ?? true,
+      lastNurseActive: nurseActiveDate,
     );
   }
 
@@ -60,6 +75,10 @@ class Hospital {
         'lastUpdated': lastUpdated != null
             ? Timestamp.fromDate(lastUpdated!)
             : FieldValue.serverTimestamp(),
+        'isNurseOnline': isNurseOnline,
+        'lastNurseActive': lastNurseActive != null
+            ? Timestamp.fromDate(lastNurseActive!)
+            : null,
       };
 
   Hospital copyWith({
@@ -72,6 +91,8 @@ class Hospital {
     String? loadLevel,
     BedInventory? beds,
     DateTime? lastUpdated,
+    bool? isNurseOnline,
+    DateTime? lastNurseActive,
   }) {
     return Hospital(
       id: id ?? this.id,
@@ -83,6 +104,8 @@ class Hospital {
       loadLevel: loadLevel ?? this.loadLevel,
       beds: beds ?? this.beds,
       lastUpdated: lastUpdated ?? this.lastUpdated,
+      isNurseOnline: isNurseOnline ?? this.isNurseOnline,
+      lastNurseActive: lastNurseActive ?? this.lastNurseActive,
     );
   }
 }

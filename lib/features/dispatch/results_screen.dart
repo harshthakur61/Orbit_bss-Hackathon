@@ -501,14 +501,57 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
 
                                 const SizedBox(height: 12),
 
-                                // Freshness & Load Row
+                                // Freshness & Load & Nurse Status Row
                                 Row(
                                   children: [
                                     FreshnessBadge(
                                       lastUpdated: item.hospital.lastUpdated,
                                       compact: true,
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: item.hospital.isNurseOnline
+                                            ? AppColors.successTint
+                                            : AppColors.dangerTint,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: item.hospital.isNurseOnline
+                                              ? AppColors.success
+                                              : AppColors.danger,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            item.hospital.isNurseOnline
+                                                ? Icons.wifi_rounded
+                                                : Icons.wifi_off_rounded,
+                                            size: 11,
+                                            color: item.hospital.isNurseOnline
+                                                ? AppColors.success
+                                                : AppColors.danger,
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            item.hospital.isNurseOnline
+                                                ? 'Online'
+                                                : 'Offline',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: item.hospital.isNurseOnline
+                                                  ? AppColors.success
+                                                  : AppColors.danger,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 4),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../providers/request_providers.dart';
+import '../../providers/patient_auth_provider.dart';
 
 class RoleSelectScreen extends ConsumerWidget {
   const RoleSelectScreen({super.key});
@@ -100,24 +101,29 @@ class RoleSelectScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              // Patient Button (No login required, live availability only)
+              // Patient Button
               FilledButton.tonalIcon(
                 onPressed: () {
                   ref.read(isPatientModeProvider.notifier).setPatientMode(true);
-                  context.push('/patient/hub');
+                  final auth = ref.read(patientAuthProvider);
+                  if (auth.isAuthenticated) {
+                    context.push('/patient/hub');
+                  } else {
+                    context.push('/patient/login');
+                  }
                 },
-                icon: const Icon(Icons.person_pin_circle_outlined, size: 28, color: AppColors.primaryDark),
+                icon: const Icon(Icons.person_outline_rounded, size: 28, color: AppColors.primaryDark),
                 label: const Text(
-                  "Continue as Patient\n(View Availability Only)",
+                  "Continue as Patient",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: AppColors.primaryDark,
                   ),
                 ),
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(64),
+                  minimumSize: const Size.fromHeight(60),
                   backgroundColor: AppColors.primaryTint,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),

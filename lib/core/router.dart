@@ -10,10 +10,12 @@ import '../features/dispatch/hold_status_screen.dart';
 import '../features/nurse/request_history_screen.dart';
 import '../features/dispatch/trip_complete_screen.dart';
 import '../features/patient/patient_hub_screen.dart';
+import '../features/patient/patient_login_screen.dart';
 import '../features/patient/clinic_search_screen.dart';
 import '../features/patient/clinic_results_screen.dart';
 import '../features/patient/report_list_screen.dart';
 import '../features/patient/report_analysis_screen.dart';
+import '../features/patient/doctor_consultation_screen.dart';
 
 // Placeholder screens for future phases (to ensure routing compiles in Phase 1)
 class NurseLoginPlaceholder extends StatelessWidget {
@@ -144,6 +146,10 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const DemoControlsScreen(),
     ),
     GoRoute(
+      path: '/patient/login',
+      builder: (context, state) => const PatientLoginScreen(),
+    ),
+    GoRoute(
       path: '/patient/hub',
       builder: (context, state) => const PatientHubScreen(),
     ),
@@ -162,6 +168,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/patient/reports/analysis',
       builder: (context, state) => const ReportAnalysisScreen(),
+    ),
+    GoRoute(
+      path: '/patient/consultation',
+      builder: (context, state) => const DoctorConsultationScreen(),
     ),
   ],
 );
