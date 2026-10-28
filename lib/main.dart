@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'core/theme.dart';
 import 'core/router.dart';
+import 'services/fcm_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,6 +13,8 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    final fcm = FcmService();
+    await fcm.initialize();
   } catch (e) {
     debugPrint('Firebase init error: $e');
   }

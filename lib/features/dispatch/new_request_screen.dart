@@ -7,6 +7,8 @@ import '../../core/theme.dart';
 import '../../core/constants.dart';
 import '../../providers/location_providers.dart';
 import '../../providers/request_providers.dart';
+import '../crew/widgets/crew_status_pill.dart';
+import 'widgets/voice_note_recorder.dart';
 
 class NewRequestScreen extends ConsumerStatefulWidget {
   const NewRequestScreen({super.key});
@@ -132,6 +134,13 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
         title: Text(isPatientMode ? 'Find Nearby Emergency Beds' : 'New Emergency Dispatch'),
         backgroundColor: AppColors.primaryDark,
         actions: [
+          if (!isPatientMode)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(right: 6.0),
+                child: CrewStatusPill(),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.tune_rounded),
             tooltip: 'Demo Controls',
@@ -444,6 +453,23 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
                         ref.read(requestDraftProvider.notifier).setNote(val);
                       },
                     ),
+                    if (!isPatientMode) ...[
+                      const SizedBox(height: 16),
+                      VoiceNoteRecorder(
+                        initialFilePath: draft.voiceNotePath,
+                        initialDurationSec: draft.voiceNoteDurationSec,
+                        onRecorded: (filePath, durationSec, sizeBytes) {
+                          ref.read(requestDraftProvider.notifier).setVoiceNote(
+                                path: filePath,
+                                durationSec: durationSec,
+                                sizeBytes: sizeBytes,
+                              );
+                        },
+                        onDeleted: () {
+                          ref.read(requestDraftProvider.notifier).clearVoiceNote();
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),

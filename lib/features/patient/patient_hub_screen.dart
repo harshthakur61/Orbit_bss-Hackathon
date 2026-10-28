@@ -460,6 +460,72 @@ class _PatientHubScreenState extends ConsumerState<PatientHubScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 20),
+
+            // Option 5: My Appointments
+            InkWell(
+              onTap: () {
+                context.push('/patient/appointments');
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.primary, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryTint,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.event_available_rounded,
+                        color: AppColors.primary,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'My Appointments',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'View upcoming and past appointments booked at clinics & diagnostic labs.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded,
+                        color: AppColors.primary, size: 20),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
 
             // Bottom Mode Info Card

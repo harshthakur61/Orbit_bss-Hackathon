@@ -6,6 +6,8 @@ import '../../models/hospital.dart';
 import '../../providers/hospital_providers.dart';
 import '../../providers/location_providers.dart';
 import '../../providers/request_providers.dart';
+import '../../providers/ambulance_auth_provider.dart';
+import '../../providers/crew_presence_providers.dart';
 
 class TripCompleteScreen extends ConsumerWidget {
   const TripCompleteScreen({super.key});
@@ -184,11 +186,25 @@ class TripCompleteScreen extends ConsumerWidget {
               // Primary New Emergency Button
               ElevatedButton.icon(
                 onPressed: () {
+                  final currentAmb = ref.read(currentAmbulanceProvider).value;
+                  if (currentAmb != null) {
+                    try {
+                      ref.read(crewPresenceServiceProvider).restorePreviousStatus(
+                            currentAmb.uid,
+                            ambulance: currentAmb,
+                          );
+                    } catch (_) {}
+                  }
+
                   ref.read(selectedRequestIdProvider.notifier).select(null);
                   ref
                       .read(requestDraftProvider.notifier)
                       .setNeeds(['ICU']);
-                  context.go('/dispatch/new');
+                  if (!ref.read(isPatientModeProvider)) {
+                    context.go('/crew/home');
+                  } else {
+                    context.go('/dispatch/new');
+                  }
                 },
                 icon: const Icon(Icons.add_location_alt_rounded, size: 28),
                 label: const Text('Start New Emergency Request'),

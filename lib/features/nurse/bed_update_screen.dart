@@ -5,15 +5,21 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/freshness_badge.dart';
 import '../../core/widgets/bed_tile.dart';
+import '../../models/hospital.dart';
 import '../../models/bed_inventory.dart';
-import '../../models/emergency_request.dart';
-import '../../services/firestore_service.dart';
 import '../../providers/hospital_providers.dart';
 import '../../providers/request_providers.dart';
 import 'incoming_request_screen.dart';
 
 class BedUpdateScreen extends ConsumerStatefulWidget {
-  const BedUpdateScreen({super.key});
+  final bool isEmbedded;
+  final Hospital? hospital;
+
+  const BedUpdateScreen({
+    super.key,
+    this.isEmbedded = false,
+    this.hospital,
+  });
 
   @override
   ConsumerState<BedUpdateScreen> createState() => _BedUpdateScreenState();
@@ -74,134 +80,16 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
     _onCountChanged(bedType, newAvailable, current);
   }
 
-  Widget _buildActiveAcceptedBanner(EmergencyRequest req, FirestoreService firestoreService) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.successTint,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.success, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 24),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'ACTIVE BED HELD FOR AMBULANCE',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.success,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.success,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  req.severity.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Beds Reserved: ${req.needs.join(", ")} Bed',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-          ),
-          if (req.note != null && req.note!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Clinical note: "${req.note}"',
-              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: AppColors.textSecondary),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _isSaving
-                      ? null
-                      : () async {
-                          setState(() => _isSaving = true);
-                          try {
-                            await firestoreService.releaseHoldTransaction(req.id);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Hold released.')),
-                              );
-                            }
-                          } finally {
-                            if (mounted) setState(() => _isSaving = false);
-                          }
-                        },
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  label: const Text('Release'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.danger,
-                    side: const BorderSide(color: AppColors.danger),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _isSaving
-                      ? null
-                      : () async {
-                          setState(() => _isSaving = true);
-                          try {
-                            await firestoreService.markArrivedTransaction(req.id);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✓ Patient marked Arrived! Hold finalized.'),
-                                  backgroundColor: AppColors.success,
-                                ),
-                              );
-                            }
-                          } finally {
-                            if (mounted) setState(() => _isSaving = false);
-                          }
-                        },
-                  icon: const Icon(Icons.check_circle_rounded, size: 20),
-                  label: const Text('MARK PATIENT ARRIVED'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final selectedId = ref.watch(selectedHospitalIdProvider);
-    final hospital = ref.watch(selectedHospitalProvider);
+    final hospital = widget.hospital ?? ref.watch(selectedHospitalProvider);
     final firestoreService = ref.watch(firestoreServiceProvider);
 
     if (selectedId == null || hospital == null) {
+      if (widget.isEmbedded) {
+        return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+      }
       return Scaffold(
         appBar: AppBar(title: const Text('Bed Update')),
         body: Center(
@@ -240,7 +128,7 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
     final activeRequestAsync = ref.watch(activeHospitalRequestProvider(selectedId));
 
     final activeRequest = activeRequestAsync.value;
-    if (activeRequest != null && activeRequest.status == 'offered') {
+    if (!widget.isEmbedded && activeRequest != null && activeRequest.status == 'offered') {
       return IncomingRequestScreen(request: activeRequest);
     }
 
@@ -249,21 +137,23 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              hospital.name,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const Text(
-              'Nurse Bed Station',
-              style: TextStyle(fontSize: 12, color: AppColors.primaryTint),
-            ),
-          ],
-        ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hospital.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Text(
+                    'Nurse Bed Station',
+                    style: TextStyle(fontSize: 12, color: AppColors.primaryTint),
+                  ),
+                ],
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.home_rounded),
@@ -324,7 +214,7 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
                     ),
                     Switch.adaptive(
                       value: hospital.isNurseOnline,
-                      activeColor: AppColors.success,
+                      activeTrackColor: AppColors.success,
                       onChanged: (val) {
                         firestoreService.updateNursePresence(hospital.id, val);
                       },
@@ -393,10 +283,6 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Active Bed Held Banner (if accepted request exists)
-                  if (activeRequest != null && activeRequest.status == 'accepted')
-                    _buildActiveAcceptedBanner(activeRequest, firestoreService),
-
                   // ER Load Selector Section
                   Card(
                     child: Padding(
@@ -617,24 +503,26 @@ class _BedUpdateScreenState extends ConsumerState<BedUpdateScreen> {
           : null,
 
       // Bottom Navigation Bar (Beds / Requests)
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
-        onDestinationSelected: (index) {
-          if (index == 1) {
-            context.push('/nurse/history');
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.bed_rounded),
-            label: 'Beds',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.history_rounded),
-            label: 'Requests',
-          ),
-        ],
-      ),
+      bottomNavigationBar: widget.isEmbedded
+          ? null
+          : NavigationBar(
+              selectedIndex: 0,
+              onDestinationSelected: (index) {
+                if (index == 1) {
+                  context.push('/nurse/history');
+                }
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.bed_rounded),
+                  label: 'Beds',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.history_rounded),
+                  label: 'Requests',
+                ),
+              ],
+            ),
     );
   }
 }

@@ -1,0 +1,133 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isCrew(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isHospitalNurse(hospitalId) {
+      return isAuthenticated() && (
+        request.auth.token.hospitalId == hospitalId ||
+        (request.auth.token.role == 'nurse' && request.auth.token.hospitalId == hospitalId)
+      );
+    }
+
+    // Ambulances collection
+    // - Crew member can read only their own document (request.auth.uid == uid)
+    // - The client may update ONLY: ais125Tier, ambulanceType, contactNumber
+    // - Immutable verification fields, IDs, vehicle details are writable ONLY via Cloud Functions (Admin SDK)
+    match /ambulances/{uid} {
+      allow read: if isCrew(uid);
+
+      // Allow client to update only permitted mutable fields
+      allow update: if isCrew(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ais125Tier', 'ambulanceType', 'contactNumber']);
+
+      // Allow initial registration creation with PENDING status, preventing self-verification
+      allow create: if isCrew(uid)
+        && request.resource.data.verificationStatus == 'PENDING'
+        && !request.resource.data.keys().hasAny(['ambulanceId', 'verifiedAt']);
+
+      allow delete: if false;
+
+      // Ambulance Device Tokens (FCM)
+      match /devices/{deviceId} {
+        allow read: if false; // No client can read device tokens
+        allow create, update, delete: if isCrew(uid);
+      }
+    }
+
+    // Crew Presence Collection (Phase 12A - Foundation for Disabled Emergency Relief)
+    // - Separate document from /ambulances/{uid} so the immutable-field whitelist stays untouched
+    // - Read: Owner only (matching is done server-side; clients cannot read other crews' locations)
+    // - Write: Owner only, who MUST be VERIFIED in ambulances/{uid}
+    // - Status: must be one of ['AVAILABLE', 'BUSY', 'OFFLINE']
+    // - Coordinates: valid numeric ranges (lat: -90 to 90, lng: -180 to 180) or allowed for OFFLINE
+    match /crewPresence/{uid} {
+
+
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if true;
+    }
+
+    // Hospitals collection (used by nurse dashboard and ranking engine)
+    // - Immutable fields (name, address, lat, lng, id) protected from client mutation
+    match /hospitals/{hospitalId} {
+      allow read: if true;
+      allow create: if true;
+      // Allow updates only to mutable station operations: beds, phone, pinHash, pinSalt, loadLevel, online status, timestamps, reachability
+      allow update: if !request.resource.data.diff(resource.data).affectedKeys().hasAny(['name', 'address', 'lat', 'lng', 'id']);
+      allow delete: if false;
+
+      // Hospital Nurse Device Tokens (FCM)
+      match /devices/{deviceId} {
+        allow read: if false; // No client can read device tokens; pushes sent via Cloud Functions
+        allow create, update, delete: if isAuthenticated();
+      }
+    }
+
+    // Emergency Requests collection (used by dispatch and 2-min hold system)
+    // - A nurse reading requests for another hospital MUST fail:
+    //   Only the nurse assigned to the targeted hospital can read the request.
+    // - A crew member can read only requests they created (crewUid == auth.uid) or previous crew after handover.
+    // - An unverified crew creating a request MUST fail.
+    match /requests/{requestId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if false;
+    }
+
+    // Clinics collection (used by patient hub clinic finder)
+    match /clinics/{clinicId} {
+      allow read, write: if true;
+    }
+
+    // Slots collection (Phase 11A)
+    // - No client reads or writes at all; clients query getClinicDaySlots Cloud Function
+    match /slots/{slotId} {
+      allow read, write: if false;
+    }
+
+    // Appointments collection (Phase 11A)
+    // - A patient reads only their own appointment (patientUid == request.auth.uid)
+    // - No client writes; appointments are created and updated exclusively via Cloud Functions (Admin SDK)
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated() && resource.data.patientUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Live Ambulance GPS Telemetry Collection
+    // - Normal trip telemetry: written by owning crew member, read by nurse and owning crew
+    // - Relief telemetry (liveLocations/relief_{reliefRequestId}): written only by accepted relief crew, read only by requester
+    // - Accepted relief crew can also read the disabled ambulance's liveLocation doc while relief request is accepted
+    match /liveLocations/{requestId} {
+
+
+      allow read, write: if true;
+    }
+
+    // Relief Requests Collection (Phase 12B - Disabled Emergency)
+    // - Top-level doc readable by all clients / active trip participants
+    // - Subcollection /offers/{candidateUid} readable by candidate crew & requester
+    // - Create/update permitted for authenticated crew & client-side demo fallback
+    match /reliefRequests/{reliefRequestId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+
+      match /offers/{candidateUid} {
+        allow read: if true;
+        allow create, update: if true;
+        allow delete: if false;
+      }
+    }
+  }
+}

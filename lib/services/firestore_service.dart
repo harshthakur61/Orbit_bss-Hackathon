@@ -1,16 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/hospital.dart';
 import '../models/bed_inventory.dart';
 import '../models/emergency_request.dart';
 import '../models/attempt.dart';
 import '../models/clinic.dart';
+import 'ambulance_auth_service.dart';
 
 class FirestoreService {
-  final FirebaseFirestore _firestore;
+  final FirebaseFirestore? _customFirestore;
+  FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
 
   FirestoreService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+      : _customFirestore = firestore;
 
   CollectionReference<Map<String, dynamic>> get _hospitalsRef =>
       _firestore.collection('hospitals');
@@ -83,6 +87,19 @@ class FirestoreService {
     });
   }
 
+  // Stream live location telemetry for a specific emergency request
+  Stream<AmbulanceLiveLocation?> streamLiveLocation(String requestId) {
+    if (requestId.isEmpty) return Stream.value(null);
+    return _firestore
+        .collection('liveLocations')
+        .doc(requestId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists || snapshot.data() == null) return null;
+      return AmbulanceLiveLocation.fromMap(snapshot.data()!);
+    });
+  }
+
   // Stream active request directed to a specific hospital
   Stream<EmergencyRequest?> streamActiveRequestForHospital(String hospitalId) {
     if (hospitalId.isEmpty) return Stream.value(null);
@@ -101,6 +118,20 @@ class FirestoreService {
     });
   }
 
+  // Stream all accepted emergency requests directed to a specific hospital (active ambulances on the way)
+  Stream<List<EmergencyRequest>> streamAcceptedRequestsForHospital(String hospitalId) {
+    if (hospitalId.isEmpty) return Stream.value([]);
+    return _requestsRef
+        .where('currentHospitalId', isEqualTo: hospitalId)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => EmergencyRequest.fromJson(doc.data(), doc.id))
+          .where((req) => req.status == 'accepted')
+          .toList();
+    });
+  }
+
   // Nurse: Update bed counts
   Future<void> updateHospitalBeds(String hospitalId, BedInventory beds) async {
     try {
@@ -110,6 +141,34 @@ class FirestoreService {
       });
     } catch (e) {
       debugPrint('Error updating hospital beds: $e');
+      rethrow;
+    }
+  }
+
+  // Nurse Profile: Update hospital contact number
+  Future<void> updateHospitalContact(String hospitalId, String newPhone) async {
+    try {
+      await _hospitalsRef.doc(hospitalId).update({
+        'phone': newPhone,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error updating hospital contact: $e');
+      rethrow;
+    }
+  }
+
+  // Nurse Profile: Change hospital password (stores cryptographic salted SHA-256 hash)
+  Future<void> updateHospitalPassword(String hospitalId, String newPassword) async {
+    try {
+      final creds = Hospital.generateSaltAndHash(newPassword);
+      await _hospitalsRef.doc(hospitalId).update({
+        'pinHash': creds['pinHash'],
+        'pinSalt': creds['pinSalt'],
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error updating hospital password: $e');
       rethrow;
     }
   }
@@ -139,18 +198,21 @@ class FirestoreService {
     }
   }
 
-  // Seed 10 realistic Mumbai hospitals
+  // Seed 10 realistic Mumbai hospitals with real addresses and salted SHA-256 hash security
   Future<void> seedHospitals() async {
     final now = DateTime.now();
+    final defaultCreds = Hospital.generateSaltAndHash('1234');
 
     final List<Map<String, dynamic>> seedData = [
       {
         'id': 'lilavati_bandra',
         'name': 'Lilavati Hospital & Research Centre',
+        'address': 'A-791, Bandra Reclamation, Bandra West, Mumbai, Maharashtra 400050',
         'lat': 19.0512,
         'lng': 72.8285,
         'phone': '+91 22 2675 1000',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'med',
         'beds': const BedInventory(
           icu: BedCount(available: 5, total: 12),
@@ -165,10 +227,12 @@ class FirestoreService {
       {
         'id': 'kem_parel',
         'name': 'KEM Hospital (Parel)',
+        'address': 'Acharya Donde Marg, Parel East, Mumbai, Maharashtra 400012',
         'lat': 19.0024,
         'lng': 72.8427,
         'phone': '+91 22 2410 7000',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'high',
         'beds': const BedInventory(
           icu: BedCount(available: 1, total: 15),
@@ -183,10 +247,12 @@ class FirestoreService {
       {
         'id': 'nanavati_vileparle',
         'name': 'Nanavati Max Super Speciality Hospital',
+        'address': 'Swami Vivekananda Rd, Juhu, Vile Parle West, Mumbai, Maharashtra 400056',
         'lat': 19.0963,
         'lng': 72.8401,
         'phone': '+91 22 6836 0000',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'low',
         'beds': const BedInventory(
           icu: BedCount(available: 8, total: 10),
@@ -201,10 +267,12 @@ class FirestoreService {
       {
         'id': 'hinduja_mahim',
         'name': 'P. D. Hinduja Hospital (Mahim)',
+        'address': 'Veer Savarkar Marg, Mahim West, Mumbai, Maharashtra 400016',
         'lat': 19.0330,
         'lng': 72.8384,
         'phone': '+91 22 2445 1515',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'med',
         'beds': const BedInventory(
           icu: BedCount(available: 3, total: 10),
@@ -220,10 +288,12 @@ class FirestoreService {
       {
         'id': 'kokilaben_andheri',
         'name': 'Kokilaben Dhirubhai Ambani Hospital',
+        'address': 'Rao Saheb Achutrao Patwardhan Marg, Four Bungalows, Andheri West, Mumbai, Maharashtra 400053',
         'lat': 19.1312,
         'lng': 72.8252,
         'phone': '+91 22 4269 6969',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'low',
         'beds': const BedInventory(
           icu: BedCount(available: 7, total: 14),
@@ -238,10 +308,12 @@ class FirestoreService {
       {
         'id': 'breach_candy',
         'name': 'Breach Candy Hospital',
+        'address': '60 A, Bhulabhai Desai Marg, Cumballa Hill, Mumbai, Maharashtra 400026',
         'lat': 18.9718,
         'lng': 72.8052,
         'phone': '+91 22 2366 7788',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'med',
         'beds': const BedInventory(
           icu: BedCount(available: 4, total: 8),
@@ -256,10 +328,12 @@ class FirestoreService {
       {
         'id': 'hn_reliance_girgaon',
         'name': 'Sir H. N. Reliance Foundation Hospital',
+        'address': 'Raja Rammohan Roy Rd, Prarthana Samaj, Girgaon, Mumbai, Maharashtra 400004',
         'lat': 18.9568,
         'lng': 72.8193,
         'phone': '+91 22 6130 5000',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'low',
         'beds': const BedInventory(
           icu: BedCount(available: 6, total: 10),
@@ -274,10 +348,12 @@ class FirestoreService {
       {
         'id': 'fortis_mulund',
         'name': 'Fortis Hospital (Mulund)',
+        'address': 'Mulund Goregaon Link Rd, Industrial Area, Bhandup West, Mumbai, Maharashtra 400078',
         'lat': 19.1663,
         'lng': 72.9526,
         'phone': '+91 22 6799 4444',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'high',
         'beds': const BedInventory(
           icu: BedCount(available: 0, total: 10),
@@ -292,10 +368,12 @@ class FirestoreService {
       {
         'id': 'sion_hospital',
         'name': 'L. T. M. G. Hospital (Sion)',
+        'address': 'Sion West, Mumbai, Maharashtra 400022',
         'lat': 19.0365,
         'lng': 72.8601,
         'phone': '+91 22 2407 6381',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'high',
         'beds': const BedInventory(
           icu: BedCount(available: 2, total: 16),
@@ -310,10 +388,12 @@ class FirestoreService {
       {
         'id': 'global_parel',
         'name': 'Global Hospitals (Parel)',
+        'address': '35, Dr Ernest Borges Rd, Parel East, Mumbai, Maharashtra 400012',
         'lat': 19.0068,
         'lng': 72.8398,
         'phone': '+91 22 6767 0101',
-        'pin': '1234',
+        'pinHash': defaultCreds['pinHash'],
+        'pinSalt': defaultCreds['pinSalt'],
         'loadLevel': 'med',
         'beds': const BedInventory(
           icu: BedCount(available: 4, total: 10),
@@ -348,6 +428,10 @@ class FirestoreService {
     await batch.commit();
     await seedHospitals();
     await seedClinics();
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('resetDemoBookings');
+      await callable.call();
+    } catch (_) {}
   }
 
   // Demo: Age a hospital's lastUpdated by X minutes
@@ -372,10 +456,74 @@ class FirestoreService {
     await rejectRequestTransaction(req.id, hospitalId, reason);
   }
 
-  // Create Emergency Request
+  // Create Emergency Request with denormalized ambulance profile snapshot
   Future<String> createEmergencyRequest(EmergencyRequest request) async {
-    final docRef = await _requestsRef.add(request.toJson());
-    return docRef.id;
+    EmergencyRequest finalRequest = request;
+
+    // Source snapshot from logged-in crew profile in Firestore
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? AmbulanceAuthService.currentSessionUid;
+
+    if (uid != null) {
+      try {
+        final ambDoc = await _firestore.collection('ambulances').doc(uid).get();
+        if (ambDoc.exists && ambDoc.data() != null) {
+          final data = ambDoc.data()!;
+          final snapshot = AmbulanceSnapshot(
+            ambulanceId: data['ambulanceId'] as String? ??
+                data['applicationRef'] as String? ??
+                '',
+            vehicleNumber: data['vehicleNumber'] as String? ?? '',
+            driverName: data['driverLegalName'] as String? ?? '',
+            driverPhone: data['contactNumber'] as String? ?? '',
+            ambulanceType: data['ambulanceType'] as String? ?? 'Basic Life Support (BLS)',
+            ais125Tier: data['ais125Tier'] as String? ?? 'Type B',
+          );
+          finalRequest = finalRequest.copyWith(
+            crewUid: uid,
+            ambulance: snapshot,
+          );
+        } else if (AmbulanceAuthService.activeDemoAmbulance != null) {
+          final demo = AmbulanceAuthService.activeDemoAmbulance!;
+          finalRequest = finalRequest.copyWith(
+            crewUid: demo.uid,
+            ambulance: AmbulanceSnapshot(
+              ambulanceId: demo.ambulanceId ?? demo.applicationRef,
+              vehicleNumber: demo.vehicleNumber,
+              driverName: demo.driverLegalName,
+              driverPhone: demo.contactNumber,
+              ambulanceType: demo.ambulanceType,
+              ais125Tier: demo.ais125Tier,
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error sourcing ambulance profile snapshot: $e');
+      }
+    } else if (AmbulanceAuthService.activeDemoAmbulance != null) {
+      final demo = AmbulanceAuthService.activeDemoAmbulance!;
+      finalRequest = finalRequest.copyWith(
+        crewUid: demo.uid,
+        ambulance: AmbulanceSnapshot(
+          ambulanceId: demo.ambulanceId ?? demo.applicationRef,
+          vehicleNumber: demo.vehicleNumber,
+          driverName: demo.driverLegalName,
+          driverPhone: demo.contactNumber,
+          ambulanceType: demo.ambulanceType,
+          ais125Tier: demo.ais125Tier,
+        ),
+      );
+    }
+
+    final String docId;
+    if (finalRequest.id.isNotEmpty) {
+      docId = finalRequest.id;
+      await _requestsRef.doc(docId).set(finalRequest.toJson());
+    } else {
+      final docRef = await _requestsRef.add(finalRequest.toJson());
+      docId = docRef.id;
+    }
+    return docId;
   }
 
   // Accept request transaction: checks beds, decrements, sets status to accepted
@@ -642,6 +790,11 @@ class FirestoreService {
         'operatingHours': '07:00 AM - 09:00 PM',
         'specialties': ['Blood Tests & Pathology', 'X-Ray & Imaging', 'MRI/CT Scan', 'Ultrasound'],
         'testsAvailable': ['CBC Blood Count', 'Lipid Profile', 'Thyroid Profile', 'HbA1c Glucose', 'RTPCR Test', 'Full Body Checkup'],
+        'openTime': '07:00',
+        'closeTime': '21:00',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 49,
+        'weeklyOffDays': <int>[],
       },
       {
         'id': 'skincraft_juhu',
@@ -656,6 +809,11 @@ class FirestoreService {
         'operatingHours': '10:00 AM - 08:00 PM',
         'specialties': ['Dermatology (Skin)', 'Cosmetic Dermatology', 'General Physician'],
         'testsAvailable': ['Skin Allergy Test', 'Skin Biopsy'],
+        'openTime': '10:00',
+        'closeTime': '20:00',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 79,
+        'weeklyOffDays': <int>[7],
       },
       {
         'id': 'metropolis_andheri',
@@ -670,6 +828,11 @@ class FirestoreService {
         'operatingHours': '07:30 AM - 08:30 PM',
         'specialties': ['Blood Tests & Pathology', 'X-Ray & Imaging', 'Ultrasound'],
         'testsAvailable': ['Liver Function Test', 'Kidney Function Test', 'Vitamin D & B12', 'ECG Test'],
+        'openTime': '07:30',
+        'closeTime': '20:30',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 49,
+        'weeklyOffDays': <int>[],
       },
       {
         'id': 'lotus_women_parel',
@@ -684,6 +847,11 @@ class FirestoreService {
         'operatingHours': '09:00 AM - 07:00 PM',
         'specialties': ['Gynecology & Maternity', 'Ultrasound', 'General Physician'],
         'testsAvailable': ['Pap Smear Test', 'Pelvic Ultrasound', 'Pregnancy Screening'],
+        'openTime': '09:00',
+        'closeTime': '19:00',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 79,
+        'weeklyOffDays': <int>[7],
       },
       {
         'id': 'apex_dental_mahim',
@@ -698,6 +866,11 @@ class FirestoreService {
         'operatingHours': '09:30 AM - 08:30 PM',
         'specialties': ['Dental Care', 'Oral Surgery'],
         'testsAvailable': ['Dental X-Ray OPG', 'Root Canal Screening'],
+        'openTime': '09:30',
+        'closeTime': '20:30',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 79,
+        'weeklyOffDays': <int>[7],
       },
       {
         'id': 'little_angels_powai',
@@ -712,6 +885,11 @@ class FirestoreService {
         'operatingHours': '09:00 AM - 06:00 PM',
         'specialties': ['Pediatrics (Child)', 'General Physician'],
         'testsAvailable': ['Child Vaccination Profile', 'Growth Assessment'],
+        'openTime': '09:00',
+        'closeTime': '18:00',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 79,
+        'weeklyOffDays': <int>[7],
       },
       {
         'id': 'orthomotion_dadar',
@@ -726,6 +904,11 @@ class FirestoreService {
         'operatingHours': '10:00 AM - 07:30 PM',
         'specialties': ['Orthopedics (Bone & Joint)', 'X-Ray & Imaging'],
         'testsAvailable': ['Bone Density DEXA Scan', 'Digital X-Ray'],
+        'openTime': '10:00',
+        'closeTime': '19:30',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 79,
+        'weeklyOffDays': <int>[7],
       },
       {
         'id': 'sightcare_vileparle',
@@ -740,6 +923,11 @@ class FirestoreService {
         'operatingHours': '10:00 AM - 07:00 PM',
         'specialties': ['Ophthalmology (Eye)'],
         'testsAvailable': ['Retinal Scan', 'Corneal Topography', 'Eye Pressure OCT'],
+        'openTime': '10:00',
+        'closeTime': '19:00',
+        'slotDurationMin': 30,
+        'bookingFeeRupees': 79,
+        'weeklyOffDays': <int>[7],
       },
     ];
 

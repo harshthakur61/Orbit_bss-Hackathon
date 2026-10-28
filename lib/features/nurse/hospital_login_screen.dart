@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/theme.dart';
 import '../../providers/hospital_providers.dart';
+import '../../providers/location_providers.dart';
 
 class HospitalLoginScreen extends ConsumerStatefulWidget {
-  const HospitalLoginScreen({super.key});
+  final String? pendingRequestId;
+
+  const HospitalLoginScreen({super.key, this.pendingRequestId});
 
   @override
   ConsumerState<HospitalLoginScreen> createState() => _HospitalLoginScreenState();
@@ -33,11 +37,40 @@ class _HospitalLoginScreenState extends ConsumerState<HospitalLoginScreen> {
     hospitalsAsync.whenData((hospitals) {
       try {
         final hospital = hospitals.firstWhere((h) => h.id == _selectedHospitalId);
-        if (hospital.pin == pin || pin == '1234') {
-          // Success: Mark nurse online & select hospital
+        if (hospital.verifyPin(pin)) {
+          // Success: Mark nurse online & register FCM device token for background wakeups
           ref.read(firestoreServiceProvider).updateNursePresence(_selectedHospitalId!, true);
+          ref.read(fcmServiceProvider).registerNurseDevice(_selectedHospitalId!);
           ref.read(selectedHospitalIdProvider.notifier).select(_selectedHospitalId);
-          context.go('/nurse/beds');
+
+          if (widget.pendingRequestId != null) {
+            // Verify if the pending emergency request is still offered
+            FirebaseFirestore.instance
+                .collection('requests')
+                .doc(widget.pendingRequestId)
+                .get()
+                .then((doc) {
+              if (doc.exists &&
+                  doc.data()?['status'] == 'offered' &&
+                  doc.data()?['currentHospitalId'] == _selectedHospitalId) {
+                if (mounted) context.go('/nurse/home');
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('This request is no longer active'),
+                      backgroundColor: AppColors.textSecondary,
+                    ),
+                  );
+                  context.go('/nurse/beds');
+                }
+              }
+            }).catchError((_) {
+              if (mounted) context.go('/nurse/beds');
+            });
+          } else {
+            context.go('/nurse/beds');
+          }
         } else {
           setState(() => _errorMessage = 'Invalid PIN (Default is 1234)');
         }

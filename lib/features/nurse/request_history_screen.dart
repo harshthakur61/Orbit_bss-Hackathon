@@ -3,11 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
+import '../../models/hospital.dart';
 import '../../providers/hospital_providers.dart';
 import '../../providers/request_providers.dart';
+import 'widgets/request_detail_sheet.dart';
 
 class RequestHistoryScreen extends ConsumerStatefulWidget {
-  const RequestHistoryScreen({super.key});
+  final bool isEmbedded;
+  final Hospital? hospital;
+
+  const RequestHistoryScreen({
+    super.key,
+    this.isEmbedded = false,
+    this.hospital,
+  });
 
   @override
   ConsumerState<RequestHistoryScreen> createState() =>
@@ -19,11 +28,14 @@ class _RequestHistoryScreenState extends ConsumerState<RequestHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hospital = ref.watch(selectedHospitalProvider);
+    final hospital = widget.hospital ?? ref.watch(selectedHospitalProvider);
     final requestsAsync = ref.watch(requestsStreamProvider);
     final firestoreService = ref.watch(firestoreServiceProvider);
 
     if (hospital == null) {
+      if (widget.isEmbedded) {
+        return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+      }
       return Scaffold(
         appBar: AppBar(title: const Text('Request History')),
         body: Center(
@@ -37,18 +49,20 @@ class _RequestHistoryScreenState extends ConsumerState<RequestHistoryScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(hospital.name,
-                overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Text('Station Emergency History',
-                style: TextStyle(fontSize: 12, color: AppColors.primaryTint)),
-          ],
-        ),
+      appBar: widget.isEmbedded
+          ? null
+          : AppBar(
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(hospital.name,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('Station Emergency History',
+                      style: TextStyle(fontSize: 12, color: AppColors.primaryTint)),
+                ],
+              ),
         backgroundColor: AppColors.primaryDark,
         actions: [
           IconButton(
@@ -122,11 +136,18 @@ class _RequestHistoryScreenState extends ConsumerState<RequestHistoryScreen> {
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 16),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => RequestDetailSheet.show(
+                    context,
+                    request: req,
+                    hospital: hospital,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -200,6 +221,7 @@ class _RequestHistoryScreenState extends ConsumerState<RequestHistoryScreen> {
                                           await firestoreService
                                               .releaseHoldTransaction(req.id);
                                           if (mounted) {
+                                            // ignore: use_build_context_synchronously
                                             ScaffoldMessenger.of(context)
                                                 .showSnackBar(
                                               const SnackBar(
@@ -236,6 +258,7 @@ class _RequestHistoryScreenState extends ConsumerState<RequestHistoryScreen> {
                                           await firestoreService
                                               .markArrivedTransaction(req.id);
                                           if (mounted) {
+                                            // ignore: use_build_context_synchronously
                                             ScaffoldMessenger.of(context)
                                                 .showSnackBar(
                                               const SnackBar(
@@ -265,31 +288,34 @@ class _RequestHistoryScreenState extends ConsumerState<RequestHistoryScreen> {
                     ],
                   ),
                 ),
-              );
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, _) => Center(child: Text('Error: $err')),
+    ),
+    bottomNavigationBar: widget.isEmbedded
+        ? null
+        : NavigationBar(
+            selectedIndex: 1,
+            onDestinationSelected: (index) {
+              if (index == 0) {
+                context.go('/nurse/beds');
+              }
             },
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('Error: $err')),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 1,
-        onDestinationSelected: (index) {
-          if (index == 0) {
-            context.go('/nurse/beds');
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.bed_rounded),
-            label: 'Beds',
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.bed_rounded),
+                label: 'Beds',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.history_rounded),
+                label: 'Requests',
+              ),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.history_rounded),
-            label: 'Requests',
-          ),
-        ],
-      ),
-    );
+  );
   }
 }

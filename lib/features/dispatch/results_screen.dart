@@ -14,6 +14,12 @@ import '../../models/hospital_rank_result.dart';
 import '../../providers/hospital_providers.dart';
 import '../../providers/location_providers.dart';
 import '../../providers/request_providers.dart';
+import '../../providers/ambulance_auth_provider.dart';
+import '../../providers/crew_presence_providers.dart';
+import '../../core/constants/crew_presence_constants.dart';
+import '../../services/ambulance_auth_service.dart';
+import '../../services/voice_note_upload_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ResultsScreen extends ConsumerStatefulWidget {
   const ResultsScreen({super.key});
@@ -200,8 +206,45 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
 
     final expiresAt = DateTime.now().add(const Duration(seconds: 120));
 
+    final ambulanceAsync = ref.read(currentAmbulanceProvider);
+    final amb = ambulanceAsync.value ?? AmbulanceAuthService.activeDemoAmbulance;
+
+    final AmbulanceSnapshot? ambulanceSnapshot = amb != null
+        ? AmbulanceSnapshot(
+            ambulanceId: amb.ambulanceId ?? amb.applicationRef,
+            vehicleNumber: amb.vehicleNumber,
+            driverName: amb.driverLegalName,
+            driverPhone: amb.contactNumber,
+            ambulanceType: amb.ambulanceType,
+            ais125Tier: amb.ais125Tier,
+          )
+        : null;
+
+    final newRequestId =
+        FirebaseFirestore.instance.collection('requests').doc().id;
+
+    VoiceNoteMetadata? voiceNoteMetadata;
+    String? voiceNoteStatus;
+
+    if (draft.hasVoiceNote) {
+      final uploadService = ref.read(voiceNoteUploadServiceProvider);
+      voiceNoteMetadata = await uploadService.uploadVoiceNoteWithTimeout(
+        requestId: newRequestId,
+        filePath: draft.voiceNotePath!,
+        durationSec: draft.voiceNoteDurationSec,
+        sizeBytes: draft.voiceNoteSizeBytes,
+        timeoutDuration: const Duration(seconds: 10),
+      );
+
+      if (voiceNoteMetadata == null) {
+        voiceNoteStatus = 'arriving';
+      } else {
+        voiceNoteStatus = 'uploaded';
+      }
+    }
+
     final newRequest = EmergencyRequest(
-      id: '',
+      id: newRequestId,
       patientLat: location.latitude,
       patientLng: location.longitude,
       needs: draft.needs,
@@ -214,11 +257,31 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
       offerExpiresAt: expiresAt,
       createdAt: DateTime.now(),
       attempts: [],
+      crewUid: amb?.uid,
+      ambulance: ambulanceSnapshot,
+      ambulanceLive: null,
+      voiceNote: voiceNoteMetadata,
+      voiceNoteStatus: voiceNoteStatus,
     );
 
     try {
-      final createdId = await firestoreService.createEmergencyRequest(newRequest);
+      final createdId =
+          await firestoreService.createEmergencyRequest(newRequest);
       ref.read(selectedRequestIdProvider.notifier).select(createdId);
+      ref.read(requestDraftProvider.notifier).clearVoiceNote();
+
+      // Auto-rule: Transition crew status to Online – Busy
+      if (amb != null) {
+        try {
+          await ref.read(crewPresenceServiceProvider).setCrewStatus(
+                amb.uid,
+                CrewPresenceStatus.busy,
+                ambulance: amb,
+                recordPrevious: true,
+              );
+        } catch (_) {}
+      }
+
       if (mounted) {
         context.go('/dispatch/hold');
       }
@@ -513,12 +576,12 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 6, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: item.hospital.isNurseOnline
+                                        color: item.hospital.isReachable
                                             ? AppColors.successTint
                                             : AppColors.dangerTint,
                                         borderRadius: BorderRadius.circular(8),
                                         border: Border.all(
-                                          color: item.hospital.isNurseOnline
+                                          color: item.hospital.isReachable
                                               ? AppColors.success
                                               : AppColors.danger,
                                         ),
@@ -527,23 +590,23 @@ class _ResultsScreenState extends ConsumerState<ResultsScreen> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Icon(
-                                            item.hospital.isNurseOnline
-                                                ? Icons.wifi_rounded
-                                                : Icons.wifi_off_rounded,
+                                            item.hospital.isReachable
+                                                ? Icons.sensors_rounded
+                                                : Icons.sensors_off_rounded,
                                             size: 11,
-                                            color: item.hospital.isNurseOnline
+                                            color: item.hospital.isReachable
                                                 ? AppColors.success
                                                 : AppColors.danger,
                                           ),
                                           const SizedBox(width: 3),
                                           Text(
-                                            item.hospital.isNurseOnline
-                                                ? 'Online'
-                                                : 'Offline',
+                                            item.hospital.isReachable
+                                                ? 'Reachable'
+                                                : 'Unreachable',
                                             style: TextStyle(
                                               fontSize: 10,
                                               fontWeight: FontWeight.bold,
-                                              color: item.hospital.isNurseOnline
+                                              color: item.hospital.isReachable
                                                   ? AppColors.success
                                                   : AppColors.danger,
                                             ),

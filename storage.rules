@@ -1,0 +1,58 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isHospitalStaff(hospitalId) {
+      return isAuthenticated() && request.auth.token.hospitalId == hospitalId;
+    }
+
+    // Ambulance Crew verification documents (RC, DL, Fitness, Permits)
+    // - Only the authenticated crew member can view or upload their own documents
+    // - Maximum file size 10MB; must be PDF or image
+    match /ambulances/{uid}/{allPaths=**} {
+      allow read: if isOwner(uid) || (isAuthenticated() && request.auth.token.role == 'admin');
+      allow write: if isOwner(uid)
+        && request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+
+    // Patient AI Medical Test Reports
+    // - Secure storage for lab reports, blood panels, ECG scans, and discharge summaries
+    // - Maximum file size 15MB; must be PDF or image
+    match /patient_reports/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId) || (!isAuthenticated());
+      allow write: if (isOwner(userId) || !isAuthenticated())
+        && request.resource.size < 15 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+
+    // Hospital assets (station photos, logos, guidelines)
+    // - Publicly readable for emergency routing and patient views
+    // - Writable only by authenticated hospital staff
+    match /hospitals/{hospitalId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isHospitalStaff(hospitalId)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    // Emergency Dispatch Voice Notes (Phase 13A)
+    // - Only authenticated crew members can upload audio for emergency requests
+    // - Maximum file size 1.5MB; must be audio format
+    // - Direct client reads disabled (all reads via getVoiceNoteUrl callable for signed URL)
+    match /voiceNotes/{requestId}/{fileName} {
+      allow read: if false;
+      allow write: if isAuthenticated()
+        && request.resource.size <= 1572864
+        && request.resource.contentType.matches('audio/.*');
+    }
+  }
+}

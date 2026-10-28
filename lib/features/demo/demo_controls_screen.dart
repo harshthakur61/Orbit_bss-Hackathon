@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../providers/hospital_providers.dart';
+import '../../providers/appointment_providers.dart';
 
 class DemoControlsScreen extends ConsumerStatefulWidget {
   const DemoControlsScreen({super.key});
@@ -18,6 +19,34 @@ class _DemoControlsScreenState extends ConsumerState<DemoControlsScreen> {
   String _rejectReason = 'No bed available';
 
   bool _isLoading = false;
+  Map<String, dynamic>? _revenueData;
+  bool _isLoadingRevenue = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchRevenueSnapshot();
+    });
+  }
+
+  Future<void> _fetchRevenueSnapshot() async {
+    setState(() => _isLoadingRevenue = true);
+    try {
+      final data = await ref.read(appointmentServiceProvider).getRevenueSnapshot();
+      if (mounted) {
+        setState(() {
+          _revenueData = data;
+          _isLoadingRevenue = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingRevenue = false);
+        _showMessage('Failed to load revenue snapshot: $e', isError: true);
+      }
+    }
+  }
 
   void _showMessage(String msg, {bool isError = false}) {
     if (!mounted) return;
@@ -129,6 +158,7 @@ class _DemoControlsScreenState extends ConsumerState<DemoControlsScreen> {
                               await firestoreService.resetAllData();
                               await firestoreService.seedClinics();
                               _showMessage('All requests cleared, Hospitals & Clinics re-seeded!');
+                              _fetchRevenueSnapshot();
                             } catch (e) {
                               _showMessage('Failed to reset: $e', isError: true);
                             } finally {
@@ -145,6 +175,234 @@ class _DemoControlsScreenState extends ConsumerState<DemoControlsScreen> {
                   ),
                 ),
               ],
+            ),
+
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading
+                    ? null
+                    : () async {
+                        setState(() => _isLoading = true);
+                        try {
+                          final result = await ref.read(appointmentServiceProvider).seedDemoBookings();
+                          final count = result['seededCount'] ?? 0;
+                          _showMessage('Seeded $count demo bookings across 3 days! Grid is demo-ready.');
+                          await _fetchRevenueSnapshot();
+                        } catch (e) {
+                          _showMessage('Failed to seed demo bookings: $e', isError: true);
+                        } finally {
+                          if (mounted) setState(() => _isLoading = false);
+                        }
+                      },
+                icon: const Icon(Icons.calendar_month_rounded),
+                label: const Text('Seed Demo Bookings (3 Days · ~35% Booked)'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  backgroundColor: const Color(0xFF1E9E5A),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Revenue Snapshot Card
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: AppColors.divider),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(18.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: const [
+                            Icon(Icons.monetization_on_rounded, color: AppColors.primary, size: 24),
+                            SizedBox(width: 8),
+                            Text(
+                              'Revenue Snapshot',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.successTint,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'DEMO SANDBOX',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (_isLoadingRevenue)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_revenueData == null)
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _fetchRevenueSnapshot,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Load Revenue Snapshot'),
+                        ),
+                      )
+                    else ...[
+                      // Metric Cards Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryTint,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Total Bookings',
+                                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_revenueData!['totalBookings'] ?? 0}',
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.primaryDark,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.successTint,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Total Revenue',
+                                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '₹${_revenueData!['totalRevenueRupees'] ?? 0}',
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.success,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.infoTint,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Daily Average',
+                                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '₹${_revenueData!['averagePerDay'] ?? 0}/d',
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.info,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      const Divider(height: 1, color: AppColors.divider),
+                      const SizedBox(height: 12),
+                      // Breakdown
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Clinics (₹79 fee): ${_revenueData!['breakdown']?['clinic']?['bookings'] ?? 0} booked',
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          ),
+                          Text(
+                            '₹${_revenueData!['breakdown']?['clinic']?['revenueRupees'] ?? 0}',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Pathology Labs (₹49 fee): ${_revenueData!['breakdown']?['lab']?['bookings'] ?? 0} booked',
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          ),
+                          Text(
+                            '₹${_revenueData!['breakdown']?['lab']?['revenueRupees'] ?? 0}',
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: _isLoadingRevenue ? null : _fetchRevenueSnapshot,
+                          icon: const Icon(Icons.refresh_rounded, size: 16),
+                          label: const Text('Refresh Revenue', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
 
             const Divider(height: 40),
@@ -378,7 +636,7 @@ class _DemoControlsScreenState extends ConsumerState<DemoControlsScreen> {
                                   ),
                                   Switch.adaptive(
                                     value: h.isNurseOnline,
-                                    activeColor: AppColors.success,
+                                    activeTrackColor: AppColors.success,
                                     onChanged: (val) async {
                                       await firestoreService.updateNursePresence(
                                           h.id, val);

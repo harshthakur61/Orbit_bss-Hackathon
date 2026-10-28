@@ -178,6 +178,30 @@ class _ClinicResultsScreenState extends ConsumerState<ClinicResultsScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    context.push('/patient/clinics/book', extra: c);
+                  },
+                  icon: const Icon(Icons.calendar_month_rounded, size: 18),
+                  label: Text(
+                    'Book an appointment · ₹${c.bookingFeeRupees}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E9E5A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+              ),
             ],
           ),
         );
@@ -607,6 +631,32 @@ class _ClinicResultsScreenState extends ConsumerState<ClinicResultsScreen> {
                                           _showClinicDetailsSheet(item),
                                     ),
                                   ],
+                                ),
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      context.push('/patient/clinics/book', extra: c);
+                                    },
+                                    icon: const Icon(Icons.calendar_month_rounded, size: 18),
+                                    label: Text(
+                                      'Book an appointment · ₹${c.bookingFeeRupees}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF1E9E5A),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      elevation: 0,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),

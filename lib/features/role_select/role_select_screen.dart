@@ -91,7 +91,7 @@ class RoleSelectScreen extends ConsumerWidget {
               OutlinedButton.icon(
                 onPressed: () {
                   ref.read(isPatientModeProvider.notifier).setPatientMode(false);
-                  context.push('/dispatch/new');
+                  context.push('/crew/login');
                 },
                 icon: const Icon(Icons.airport_shuttle_outlined, size: 28),
                 label: const Text("I'm an Ambulance Crew"),

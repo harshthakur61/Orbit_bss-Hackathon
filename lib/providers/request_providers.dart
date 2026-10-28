@@ -32,6 +32,19 @@ final activeHospitalRequestProvider = StreamProvider.family<EmergencyRequest?, S
   return firestoreService.streamActiveRequestForHospital(hospitalId);
 });
 
+final acceptedHospitalRequestsProvider =
+    StreamProvider.family<List<EmergencyRequest>, String>((ref, hospitalId) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamAcceptedRequestsForHospital(hospitalId);
+});
+
+final liveLocationStreamProvider =
+    StreamProvider.family.autoDispose<AmbulanceLiveLocation?, String>(
+        (ref, requestId) {
+  final firestoreService = ref.watch(firestoreServiceProvider);
+  return firestoreService.streamLiveLocation(requestId);
+});
+
 class IsPatientModeNotifier extends Notifier<bool> {
   @override
   bool build() => false;

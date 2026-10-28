@@ -1,1 +1,52 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"bedlink-hackathon","appId":"1:898499658466:android:e73317c236366de4d154bb","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"bedlink-hackathon","configurations":{"android":"1:898499658466:android:e73317c236366de4d154bb"}}}}}}
+{
+  "functions": {
+    "source": "functions",
+    "codebase": "default",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log"
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    }
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "bedlink-hackathon",
+          "appId": "1:898499658466:android:e73317c236366de4d154bb",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "bedlink-hackathon",
+          "configurations": {
+            "android": "1:898499658466:android:e73317c236366de4d154bb"
+          }
+        }
+      }
+    }
+  }
+}

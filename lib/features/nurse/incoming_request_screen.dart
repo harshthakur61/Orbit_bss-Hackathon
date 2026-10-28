@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
@@ -5,6 +6,9 @@ import '../../core/widgets/countdown_ring.dart';
 import '../../core/utils/alert_sound.dart';
 import '../../models/emergency_request.dart';
 import '../../providers/hospital_providers.dart';
+import '../../providers/request_providers.dart';
+import '../../services/alarm_notification_service.dart';
+import 'widgets/voice_note_player_card.dart';
 
 class IncomingRequestScreen extends ConsumerStatefulWidget {
   final EmergencyRequest request;
@@ -27,14 +31,15 @@ class _IncomingRequestScreenState
   @override
   void initState() {
     super.initState();
-    // Start continuous looping sound and vibration alert
-    AlertSoundUtil.triggerIncomingAlert();
+    // Start continuous looping sound and vibration alert, silencing system notification
+    AlertSoundUtil.triggerIncomingAlert(widget.request.id);
   }
 
   @override
   void dispose() {
-    // Stop sound and vibration loop when screen closes
+    // Stop sound and vibration loop when screen closes & cancel system notification
     AlertSoundUtil.stopAlert();
+    AlarmNotificationService.instance.cancelEmergencyAlarmNotification(widget.request.id);
     super.dispose();
   }
 
@@ -137,6 +142,8 @@ class _IncomingRequestScreenState
       );
 
       await AlertSoundUtil.stopAlert();
+      await AlarmNotificationService.instance
+          .cancelEmergencyAlarmNotification(widget.request.id);
 
       if (mounted) {
         if (success) {
@@ -184,6 +191,8 @@ class _IncomingRequestScreenState
       );
 
       await AlertSoundUtil.stopAlert();
+      await AlarmNotificationService.instance
+          .cancelEmergencyAlarmNotification(widget.request.id);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -209,6 +218,8 @@ class _IncomingRequestScreenState
 
   Future<void> _handleTimeout() async {
     await AlertSoundUtil.stopAlert();
+    await AlarmNotificationService.instance
+        .cancelEmergencyAlarmNotification(widget.request.id);
     final firestoreService = ref.read(firestoreServiceProvider);
     final hospital = ref.read(selectedHospitalProvider);
     if (hospital == null) return;
@@ -225,7 +236,13 @@ class _IncomingRequestScreenState
 
   @override
   Widget build(BuildContext context) {
-    final req = widget.request;
+    final requests = ref.watch(requestsStreamProvider).value;
+    final liveReq = requests?.firstWhere(
+          (r) => r.id == widget.request.id,
+          orElse: () => widget.request,
+        ) ??
+        widget.request;
+    final req = liveReq;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -382,6 +399,19 @@ class _IncomingRequestScreenState
                               ),
                             ),
                           ],
+                          VoiceNotePlayerCard(
+                            requestId: req.id,
+                            voiceNote: req.voiceNote,
+                            voiceNoteStatus: req.voiceNoteStatus,
+                            isOfferActiveChecker: () {
+                              final hospital = ref.read(selectedHospitalProvider);
+                              final isOfferValid = req.status == 'offered' &&
+                                  req.currentHospitalId == hospital?.id &&
+                                  (req.offerExpiresAt == null ||
+                                      DateTime.now().isBefore(req.offerExpiresAt!));
+                              return isOfferValid;
+                            },
+                          ),
                         ],
                       ),
                     ),
