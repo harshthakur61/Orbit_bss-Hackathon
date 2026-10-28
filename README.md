@@ -253,9 +253,7 @@ flowchart TD
 BedLink was designed and developed by:
 
 - **Harsh Thakur**
-- **Akash Thakur**
 - **Saurabh Vaishya**
-- **Viraj Bhagat**
 
 ---
 
