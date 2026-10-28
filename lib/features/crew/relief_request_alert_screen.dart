@@ -10,6 +10,7 @@ import '../../core/widgets/countdown_ring.dart';
 import '../../models/relief_offer_data.dart';
 import '../../providers/relief_providers.dart';
 import '../../services/alarm_notification_service.dart';
+import '../../services/ambulance_auth_service.dart';
 
 /// Full-screen emergency relief alert screen that overrides the crew terminal shell
 /// when an inbound relief request offer is dispatched to this ambulance.
@@ -35,6 +36,24 @@ class _ReliefRequestAlertScreenState
   String _selectedRejectReason = 'too_far';
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _reliefDocSub;
 
+  void _showSafeSnackBar(String message, {Color backgroundColor = AppColors.textSecondary}) {
+    ScaffoldMessengerState? messenger;
+    final navContext = rootNavigatorKey.currentContext;
+    if (navContext != null && navContext.mounted) {
+      messenger = ScaffoldMessenger.maybeOf(navContext);
+    }
+    if (messenger == null && mounted) {
+      messenger = ScaffoldMessenger.maybeOf(context);
+    }
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -54,11 +73,17 @@ class _ReliefRequestAlertScreenState
           .doc(widget.offer.reliefRequestId)
           .snapshots()
           .listen((snap) {
-        if (!mounted || !snap.exists) return;
+        if (!mounted || !snap.exists || _isProcessing) return;
         final data = snap.data();
         if (data == null) return;
         final status = data['status'] as String?;
+        final acceptedBy = data['acceptedByUid'] as String?;
+        final currentUid = AmbulanceAuthService.currentSessionUid;
         if (status != 'searching') {
+          // If our own ambulance accepted it, do NOT dismiss or treat as taken by someone else
+          if (status == 'accepted' && acceptedBy != null && acceptedBy == currentUid) {
+            return;
+          }
           // Relief request is no longer active (taken by another crew, aborted, or expired)
           _handleExternalDismiss(
             status == 'accepted'
@@ -73,19 +98,12 @@ class _ReliefRequestAlertScreenState
   }
 
   void _handleExternalDismiss(String message) {
-    if (!mounted) return;
+    if (!mounted || _isProcessing) return;
     AlertSoundUtil.stopAlert();
     AlarmNotificationService.instance
         .cancelReliefAlarmNotification(widget.offer.reliefRequestId);
+    _showSafeSnackBar(message);
     ref.read(activeReliefOfferProvider.notifier).clear();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.textSecondary,
-        duration: const Duration(seconds: 2),
-      ),
-    );
     widget.onDismiss?.call();
   }
 
@@ -102,28 +120,26 @@ class _ReliefRequestAlertScreenState
   void _handleTimeout() {
     if (!mounted || _isProcessing) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || _isProcessing) return;
       AlertSoundUtil.stopAlert();
       AlarmNotificationService.instance
           .cancelReliefAlarmNotification(widget.offer.reliefRequestId);
+      _showSafeSnackBar('Relief offer window expired.');
       ref.read(activeReliefOfferProvider.notifier).clear();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Relief offer window expired.'),
-          backgroundColor: AppColors.textSecondary,
-          duration: Duration(seconds: 2),
-        ),
-      );
       widget.onDismiss?.call();
     });
   }
 
   Future<void> _handleAccept() async {
+    if (_isProcessing) return;
     setState(() => _isProcessing = true);
+
+    // Cancel Firestore listener immediately so our own update doesn't race against us!
+    await _reliefDocSub?.cancel();
+    _reliefDocSub = null;
+
     final reliefService = ref.read(reliefServiceProvider);
     final reliefRequestId = widget.offer.reliefRequestId;
-    final messenger = ScaffoldMessenger.maybeOf(context);
 
     try {
       final result = await reliefService.respondToReliefRequest(
@@ -136,47 +152,34 @@ class _ReliefRequestAlertScreenState
           .cancelReliefAlarmNotification(reliefRequestId);
 
       if (result.isAlreadyTaken) {
-        messenger?.showSnackBar(
-          const SnackBar(
-            content: Text('Another ambulance accepted'),
-            backgroundColor: AppColors.textSecondary,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        _showSafeSnackBar('Another ambulance accepted');
         ref.read(activeReliefOfferProvider.notifier).clear();
         widget.onDismiss?.call();
       } else if (result.success) {
-        messenger?.showSnackBar(
-          const SnackBar(
-            content: Text('✓ RELIEF ACCEPTED! Routing to disabled colleague.'),
-            backgroundColor: AppColors.success,
-            duration: Duration(seconds: 3),
-          ),
+        _showSafeSnackBar(
+          '✓ RELIEF ACCEPTED! Routing to disabled colleague.',
+          backgroundColor: AppColors.success,
         );
         ref.read(activeReliefOfferProvider.notifier).clear();
         widget.onDismiss?.call();
 
-        // Navigate using appRouter directly so unmounting of alert screen cannot cancel transition
+        // Navigate directly via appRouter so widget unmounting cannot cancel route transition
         appRouter.go('/crew/relief_nav?reliefRequestId=$reliefRequestId');
       } else {
-        messenger?.showSnackBar(
-          SnackBar(
-            content: Text(result.message.isNotEmpty
-                ? result.message
-                : 'Unable to accept relief request.'),
-            backgroundColor: AppColors.danger,
-          ),
+        _showSafeSnackBar(
+          result.message.isNotEmpty
+              ? result.message
+              : 'Unable to accept relief request.',
+          backgroundColor: AppColors.danger,
         );
         ref.read(activeReliefOfferProvider.notifier).clear();
         widget.onDismiss?.call();
       }
     } catch (e) {
       debugPrint('[ReliefAlertScreen] Error accepting relief: $e');
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text('Error accepting relief: $e'),
-          backgroundColor: AppColors.danger,
-        ),
+      _showSafeSnackBar(
+        'Error accepting relief: $e',
+        backgroundColor: AppColors.danger,
       );
     } finally {
       if (mounted) setState(() => _isProcessing = false);
@@ -287,6 +290,8 @@ class _ReliefRequestAlertScreenState
 
   Future<void> _handleReject() async {
     setState(() => _isProcessing = true);
+    await _reliefDocSub?.cancel();
+    _reliefDocSub = null;
     final reliefService = ref.read(reliefServiceProvider);
 
     try {
@@ -300,23 +305,13 @@ class _ReliefRequestAlertScreenState
         reason: _selectedRejectReason,
       );
 
+      _showSafeSnackBar('Relief request declined.');
       ref.read(activeReliefOfferProvider.notifier).clear();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Relief request declined.'),
-            backgroundColor: AppColors.textSecondary,
-          ),
-        );
-        widget.onDismiss?.call();
-      }
+      widget.onDismiss?.call();
     } catch (e) {
       debugPrint('[ReliefAlert] Error rejecting relief request: $e');
-      if (mounted) {
-        ref.read(activeReliefOfferProvider.notifier).clear();
-        widget.onDismiss?.call();
-      }
+      ref.read(activeReliefOfferProvider.notifier).clear();
+      widget.onDismiss?.call();
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
