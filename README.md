@@ -19,7 +19,7 @@
 - [Setup & Installation Instructions](#-setup--installation-instructions)
 - [Screenshots & Demo Information](#-screenshots--demo-information)
 - [Limitations & Future Scope](#-limitations--future-scope)
-- [Team Members](#-team-members)
+- [Team members](#-team-members)
 
 ---
 
@@ -34,7 +34,7 @@ In critical medical emergencies, finding an available hospital bed with the righ
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key Features of application
 
 ### 🚑 1. Ambulance Dispatcher & Emergency Bed Ranking
 - **Weighted Match Algorithm**: Ranks hospitals using a dynamic scoring formula factoring in distance, estimated driving time (OSRM API), bed type availability, capacity load penalty, and data freshness (staleness penalties for un-updated data).
